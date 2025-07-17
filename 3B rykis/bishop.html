@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+
+<html lang="en">
+
+<head>
+    <title>4A Lab</title>
+    <script type="text/javascript" src="lib/three.js"></script>
+    <script type="text/javascript" src="lib/jquery-1.9.0.js"></script>
+    <script type="text/javascript" src="lib/stats.js"></script>
+    <script type="text/javascript" src="lib/dat.gui.js"></script>
+    <script type="text/javascript" src="lib/TrackballControls.js"></script>
+    <script type="text/javascript" src="lib/ThreeBSP.js"></script>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+        }
+    </style>
+</head>
+<body>
+
+<div id="Stats-output">
+</div>
+<div id="WebGL-output">
+</div>
+
+<script type="text/javascript">
+
+    $(function () {
+        
+        const stats = initStats();
+
+        const scene = new THREE.Scene();
+
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 500);
+        camera.position.x = 120;
+        camera.position.y = 60;
+        camera.position.z = 180;
+        camera.lookAt(new THREE.Vector3(0, 0, 0));
+
+        const perspectiveCamera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 200);
+        perspectiveCamera.position.x = 0;
+        perspectiveCamera.position.y = 50;
+        perspectiveCamera.position.z = 7;
+        perspectiveCamera.lookAt(scene.position);
+
+        const dollyCamera = new THREE.PerspectiveCamera(100, window.innerWidth / window.innerHeight, 0.1, 200);
+        dollyCamera.position.x = 100;
+        dollyCamera.position.y = 20;
+        dollyCamera.position.z = -50;
+        dollyCamera.fov = 100;
+        dollyCamera.lookAt(scene.position);
+
+        const cameraHelperPerspective = new THREE.CameraHelper(perspectiveCamera);
+        scene.add(cameraHelperPerspective)
+        const cameraHelperDolly = new THREE.CameraHelper(dollyCamera);
+        scene.add(cameraHelperDolly)
+
+        const renderer = new THREE.WebGLRenderer();
+
+        renderer.setClearColorHex(0xEEEEEE, 1.0);
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        
+        const plane = createPlane()
+        scene.add(plane);
+
+
+
+        let overviewMode = true;
+        let perspectiveViewMode = false;
+        let dollyViewMode = false;
+        let cameraHelperPerspectiveOff = false;
+        let cameraHelperDollyOff = false;
+
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
+        directionalLight.position.set(-20, 40, 60);
+        directionalLight.shadowDarkness = 0.01;
+        scene.add(directionalLight);
+
+        const ambientLight = new THREE.AmbientLight(0x292929);
+        ambientLight.shadowCameraVisible = false;
+        scene.add(ambientLight);
+
+        $("#WebGL-output").append(renderer.domElement);
+
+        const controls = new function () {
+        this.cameraHelperPerspective = false;
+        this.cameraHelperDolly = false;
+        this.fov = 75;
+        this.perspective = "Overview";
+        this.dollyX = dollyCamera.position.x; 
+        this.dollyView = function () {
+            overviewMode = false;
+            perspectiveViewMode = false;
+            dollyViewMode = true;
+            this.perspective = "Dolly";
+        };
+
+    this.perspectiveView = function () {
+        dollyViewMode = false;
+        overviewMode = false;
+        perspectiveViewMode = true;
+        this.perspective = "Perspective";
+    };
+
+    this.overview = function () {
+        dollyViewMode = false;
+        perspectiveViewMode = false;
+        overviewMode = true;
+        this.perspective = "Overview";
+    };
+};
+
+        const gui = new dat.GUI();
+        gui.add(controls, 'perspectiveView');
+        gui.add(controls, 'dollyView');
+        gui.add(controls, 'overview');
+        gui.add(controls, 'cameraHelperPerspective').onChange(function () {
+            cameraHelperPerspectiveOff = !cameraHelperPerspectiveOff;
+        });
+        gui.add(controls, 'cameraHelperDolly').onChange(function () {
+            cameraHelperDollyOff = !cameraHelperDollyOff;
+        });
+        gui.add(controls, 'fov', 25, 100);
+        gui.add(controls, 'dollyX', 25, 100).onChange(function (value) {
+    dollyCamera.position.x = value; 
+});
+
+        gui.add(controls, 'perspective').listen();
+
+
+        const firstMesh = createBishop();
+        firstMesh.position.set(-50, -50, -50);
+        scene.add(firstMesh);
+
+        const secondMesh = createBishop();
+        secondMesh.position.set(0, 18, -50);
+        scene.add(secondMesh);
+
+
+        const cameraModelPerspective = createCameraMesh()
+        cameraModelPerspective.position.y = perspectiveCamera.position.y;
+        cameraModelPerspective.position.z = perspectiveCamera.position.z;
+        scene.add(cameraModelPerspective)
+
+        const cameraModelDolly = createCameraMesh()
+
+        cameraModelDolly.rotateY(-Math.PI / 2)
+        cameraModelDolly.position.x = dollyCamera.position.x - 10;
+        cameraModelDolly.position.y = dollyCamera.position.y;
+        cameraModelDolly.position.z = dollyCamera.position.z;
+        scene.add(cameraModelDolly)
+
+        const camControl = new THREE.TrackballControls(camera, renderer.domElement);
+        
+        
+        
+        let step = 0;
+        const angleChange = 1 / (60 * 10);
+        let zooming = true;
+        const fovDiff = (150 - 50) / 100;
+        render();
+
+
+        function render() {
+
+            stats.update();
+
+            camera.fov = controls.fov
+            camera.lookAt(new THREE.Vector3(0, 0, 0))
+
+            scene.add(cameraModelPerspective)
+            scene.add(cameraModelDolly)
+
+            perspectiveCamera.fov = controls.fov;
+            let x = 17 + (50 * (Math.sin(step)));
+            let z = 17 + (50 * (Math.sin(step)));
+            perspectiveCamera.lookAt(new THREE.Vector3(x, 18, z));
+            firstMesh.position = new THREE.Vector3(x, 18, z);
+
+            step += 0.01 ;
+
+
+            cameraModelDolly.position.x = dollyCamera.position.x;
+            cameraModelDolly.position.y = dollyCamera.position.y;
+            cameraModelDolly.position.z = dollyCamera.position.z;
+            renderer.render(scene, camera);
+
+            perspectiveCamera.lookAt(firstMesh.position);
+            cameraModelPerspective.lookAt(firstMesh.position);
+            if (firstMesh.position.x <= 30 && firstMesh.position.x >= -30) {
+                let diff = Math.sin((-Math.PI / (2 * 30)) * firstMesh.position.x);
+                let rotation = (diff * Math.PI) / 2 - Math.PI / 2;
+                perspectiveCamera.up.z = Math.sin(rotation)/2;
+                cameraModelPerspective.up.z = Math.sin(rotation)/2;
+                console.log(perspectiveCamera.up.z)
+            }
+
+            if (cameraHelperPerspectiveOff) {
+                scene.add(cameraHelperPerspective)
+                renderer.render(scene, perspectiveCamera);
+            } else {
+                scene.remove(cameraHelperPerspective)
+            }
+
+            if (zooming) {
+                if (dollyCamera.position.x < 25) {
+                    zooming = !zooming;
+                }
+
+                dollyCamera.fov = 150 - ((dollyCamera.position.x - 25) / (150 - 25)) * (150 - 10);
+            } else {
+                if (dollyCamera.position.x > 150) {
+                    zooming = !zooming;
+                }
+
+                dollyCamera.fov = 10 + ((dollyCamera.position.x - 25) / (150 - 25)) * (150 - 10);
+            }
+
+
+            dollyCamera.lookAt(new THREE.Vector3(0, 18, -50));
+            secondMesh.position = new THREE.Vector3(9, 18, -50);
+            if (cameraHelperDollyOff) {
+                scene.add(cameraHelperDolly)
+                renderer.render(scene, dollyCamera);
+            } else {
+                scene.remove(cameraHelperDolly)
+            }
+
+            camera.updateProjectionMatrix();
+            perspectiveCamera.updateProjectionMatrix();
+            dollyCamera.updateProjectionMatrix()
+
+            cameraHelperPerspective.update();
+            cameraHelperDolly.update();
+
+            camControl.update()
+
+            requestAnimationFrame(render);
+            if (overviewMode) {
+                renderer.render(scene, camera);
+            }
+            if (perspectiveViewMode) {
+                scene.remove(cameraModelPerspective)
+                renderer.render(scene, perspectiveCamera);
+            }
+            if (dollyViewMode) {
+                scene.remove(cameraModelDolly)
+                renderer.render(scene, dollyCamera);
+            }
+        }
+        
+        function createPlane() {
+        const group = new THREE.Object3D();
+
+        let colors = [0xF5F5DC, 0x000000];
+
+        for (let i = 0; i < 8; i++) {
+            for (let j = 0; j < 8; j++) {
+            const square = createPlaneSquare(colors[(i + j + 1) % 2]);
+            let x = -67;
+            let z = 64;
+            x = x + (19 * i);
+            z = z - (19 * j);
+            square.position.set(x, -9, z);
+            group.add(square);
+            }
+        }
+
+        return group;
+        }
+
+
+
+
+        function createPlaneSquare(color) {
+            const CubeGeometry = new THREE.CubeGeometry(19, 19, 19);
+            const boxMaterial = new THREE.MeshLambertMaterial({color: color});
+            return new THREE.Mesh(CubeGeometry, boxMaterial);
+        }
+
+        function createBishop() {
+            const pointsX = [250, 220, 208, 201, 196, 194, 194, 197, 203, 213, 225, 208, 203, 208, 228, 226, 224, 221, 217, 212, 204, 188, 185, 174, 169, 168, 175, 172, 172, 173, 250];
+
+            const pointsY = [34, 46, 58, 70, 82, 94, 106, 118, 130, 142, 154, 166, 178, 190, 202, 214, 226, 238, 250, 262, 274, 286, 298, 310, 322, 334, 346, 358, 370, 382, 382];
+
+            const points = [];
+            for (let i = 0; i < pointsX.length; i++) {
+                points.push(new THREE.Vector3(25 - pointsX[i] / 10, 0.01, (pointsY[pointsX.length - 1] - pointsY[i] - 174) / 10));
+            }
+
+            const latheGeometry = new THREE.LatheGeometry(points, 12, 0, 2 * Math.PI);
+
+            const meshMaterial = new THREE.MeshLambertMaterial({color: 0x444444})
+            meshMaterial.side = THREE.DoubleSide;
+
+            const latheMesh = new THREE.Mesh(latheGeometry, meshMaterial);
+
+            const crossYPosition = 14.5;
+            const crossXPosition = 0;
+            const cutYDistance = 1.5;
+            const cutXDistance = 1.5;
+
+            const crossGeometry = new THREE.CubeGeometry(5, 5, 1);
+            const crossMesh = new THREE.Mesh(crossGeometry, meshMaterial);
+            crossMesh.position.x = crossXPosition;
+            crossMesh.position.y = crossYPosition;
+
+            const CubeGeometry = new THREE.CubeGeometry(2, 2, 1);
+            const topLeftBox = new THREE.Mesh(CubeGeometry, meshMaterial);
+            topLeftBox.position.x = crossXPosition - cutXDistance;
+            topLeftBox.position.y = crossYPosition + cutYDistance;
+
+            const topRightBox = new THREE.Mesh(CubeGeometry, meshMaterial);
+            topRightBox.position.x = crossXPosition + cutXDistance;
+            topRightBox.position.y = crossYPosition + cutYDistance;
+
+            const bottomLeftBox = new THREE.Mesh(CubeGeometry, meshMaterial);
+            bottomLeftBox.position.x = crossXPosition - cutXDistance;
+            bottomLeftBox.position.y = crossYPosition - cutYDistance;
+
+            const bottomRightBox = new THREE.Mesh(CubeGeometry, meshMaterial);
+            bottomRightBox.position.x = crossXPosition + cutXDistance;
+            bottomRightBox.position.y = crossYPosition - cutYDistance;
+
+            let cross = new ThreeBSP(crossMesh)
+                .subtract(new ThreeBSP(topLeftBox))
+                .subtract(new ThreeBSP(topRightBox))
+                .subtract(new ThreeBSP(bottomLeftBox))
+                .subtract(new ThreeBSP(bottomRightBox))
+                .toMesh();
+
+            cross.geometry.computeFaceNormals();
+            cross.geometry.computeVertexNormals();
+            cross.material = meshMaterial;
+            cross.rotation.y = Math.PI / 2;
+
+            latheMesh.geometry.computeFaceNormals();
+            latheMesh.geometry.computeVertexNormals();
+            latheMesh.material = meshMaterial;
+            latheMesh.rotation.x = -Math.PI / 2;
+
+            let bishopGroup = new THREE.Object3D();
+            bishopGroup.add(cross);
+            bishopGroup.add(latheMesh);
+            return bishopGroup;
+        }
+
+
+        function updateFOV(camera, targetPosition) {
+        const distance = camera.position.distanceTo(targetPosition);
+        const objectSize = 20; 
+        const fov = 2 * Math.atan(objectSize / (2 * distance)) * (180 / Math.PI);
+        camera.fov = THREE.MathUtils.clamp(fov, 25, 100); 
+        camera.updateProjectionMatrix();
+}
+
+
+        function createCameraMesh() {
+            const cameraMesh = new THREE.Object3D();
+            const rollGeometry = new THREE.CylinderGeometry(2, 2, 0.8, 32);
+            const frontGeometry = new THREE.CylinderGeometry(0.5, 0.1, 1.5, 32);
+            const bodyGeometry = new THREE.CubeGeometry(2.5, 2.5, 5);
+            const material = new THREE.MeshLambertMaterial({color: 0xcccccc});
+            const roll = new THREE.Mesh(rollGeometry, material);
+            roll.rotation.z = Math.PI / 2;
+            roll.position.x = 0;
+            roll.position.y = 2;
+            roll.position.z = 1;
+            cameraMesh.add(roll);
+
+            const body = new THREE.Mesh(bodyGeometry, material);
+            cameraMesh.add(body);
+
+            const front = new THREE.Mesh(frontGeometry, material);
+            front.position.z = 2.5;
+            front.rotation.x = Math.PI / 2;
+            cameraMesh.add(front)
+
+            const roll2 = new THREE.Mesh(rollGeometry, material);
+            roll2.rotation.z = Math.PI / 2;
+            roll2.scale.x = roll2.scale.x * 0.5
+            roll2.scale.y = roll2.scale.y * 0.5
+            roll2.scale.z = roll2.scale.z * 0.5
+            roll2.position.x = 0;
+            roll2.position.y = 1.5;
+            roll2.position.z = -1.75;
+            cameraMesh.add(roll2);
+
+            const axes = new THREE.AxisHelper(60);
+            cameraMesh.add(axes);
+
+            cameraMesh.position.y = 15
+            cameraMesh.position.z = 15
+
+            return cameraMesh
+        }
+
+        function initStats() {
+
+            const stats = new Stats();
+
+            stats.setMode(0);
+
+            stats.domElement.style.position = 'absolute';
+            stats.domElement.style.left = '0px';
+            stats.domElement.style.top = '0px';
+
+            $("#Stats-output").append(stats.domElement);
+
+            return stats;
+        }
+
+
+    })
+    ;
+
+
+</script>
+</body>
+</html>
